@@ -1,8 +1,20 @@
 use std::fmt;
 
-/// A schema mismatch or a rename that would overwrite existing data.
+/// A configuration, revision-chain, schema, or field collision error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BifrostError {
+    /// The numeric revision is unsupported or absent from this registry.
+    UnknownRevision { revision: u32 },
+    /// A required directional adjacent transition is not configured.
+    MissingTransition {
+        from: crate::Revision,
+        to: crate::Revision,
+    },
+    /// Only transitions between consecutive, distinct revisions are allowed.
+    NonAdjacentTransition {
+        from: crate::Revision,
+        to: crate::Revision,
+    },
     /// Invalid JSON Pointer rule configuration.
     InvalidPointer(crate::PointerError),
     /// An existing value on the migration path must be an object.
@@ -19,6 +31,12 @@ pub enum BifrostError {
 impl fmt::Display for BifrostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnknownRevision { revision } => write!(f, "unknown revision v{revision}"),
+            Self::MissingTransition { from, to } => write!(f, "missing transition {from} -> {to}"),
+            Self::NonAdjacentTransition { from, to } => write!(
+                f,
+                "transition {from} -> {to} must join consecutive, distinct revisions"
+            ),
             Self::InvalidPointer(error) => write!(f, "invalid rule pointer: {error}"),
             Self::ExpectedObject { path } => {
                 let location = if path.is_empty() {

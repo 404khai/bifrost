@@ -2,7 +2,7 @@
 
 > Bifrost is a learning-first Rust library for transforming JSON messages between API revisions.
 >
-> **Current milestone: Stage 2 — JSON Pointer and trie.** Stage 1 is implemented; Stage 2 was authorized on 2026-10-21. Stages 3–5 are planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
+> **Current milestone: Stage 3 — Lazy compilation of revision chains.** Stages 1–2 are implemented; Stage 3 was authorized on 2026-10-21. Stages 4–5 are planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
 
 ## 1. Mission
 
@@ -151,7 +151,7 @@ pub fn translate(
 
 **Exit gate:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` pass; the developer can explain borrowing a `Value`, cloning versus moving it, object mutation, and error propagation. Stop here for review before Stage 2.
 
-### Stage 2 — JSON Pointer and trie [ACTIVE]
+### Stage 2 — JSON Pointer and trie [IMPLEMENTED]
 
 **Goal:** Replace hardcoded paths with structured rules indexed by JSON Pointer path tokens.
 
@@ -169,19 +169,19 @@ pub fn translate(
 
 **Exit gate:** no hardcoded path navigation remains in the transformation engine; all Stage 1 tests and new trie tests pass; the developer can explain why a prefix trie helps skip unrelated subtrees. Stop for review.
 
-### Stage 3 — Lazy compilation of revision chains
+### Stage 3 — Lazy compilation of revision chains [ACTIVE]
 
 **Goal:** Support a sequence of API revisions without eagerly compiling every possible source-target pair.
 
 **Tasks:**
 
-- [ ] Define adjacent revision rules such as v1 ↔ v2, v2 ↔ v3, and v3 ↔ v4.
-- [ ] Specify explicit forward and reverse operations; **do not assume every rule is automatically invertible**.
-- [ ] Resolve a requested `from → to` path using consecutive revisions in the correct order.
-- [ ] Lazily compile the requested chain into an efficient reusable representation.
-- [ ] Cache compiled chains keyed by `(source_revision, target_revision, registry_generation)` or use another safe invalidation scheme.
-- [ ] Preserve transformation order when multiple rules interact (e.g., renaming a path twice); merging rules into a trie must not silently change semantics.
-- [ ] Reject unknown revisions or missing transitions with useful errors.
+- [x] Define adjacent revision rules such as v1 ↔ v2, v2 ↔ v3, and v3 ↔ v4.
+- [x] Specify explicit forward and reverse operations; **do not assume every rule is automatically invertible**.
+- [x] Resolve a requested `from → to` path using consecutive revisions in the correct order.
+- [x] Lazily compile the requested chain into an efficient reusable representation.
+- [x] Cache compiled chains keyed by `(source_revision, target_revision, registry_generation)` or use another safe invalidation scheme.
+- [x] Preserve transformation order when multiple rules interact (e.g., renaming a path twice); merging rules into a trie must not silently change semantics.
+- [x] Reject unknown revisions or missing transitions with useful errors.
 
 **Required tests:** multi-hop upgrades/downgrades, identity translations, missing revisions, two successive renames, conflicting rules, cache reuse, and invalidation when rules change.
 

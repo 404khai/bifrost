@@ -38,8 +38,17 @@ impl Rename {
 /// An empty trie accepts any JSON value without validation.
 pub fn apply_rules(input: &Value, rules: &Trie<Rename>) -> Result<Value, BifrostError> {
     let mut output = input.clone();
-    apply_node(&mut output, rules, "")?;
+    apply_rules_in_place(&mut output, rules)?;
     Ok(output)
+}
+
+// Only owned working copies reach this internal entry point. Compiled chains
+// can therefore edit once per step without cloning the whole tree each time.
+pub(crate) fn apply_rules_in_place(
+    value: &mut Value,
+    rules: &Trie<Rename>,
+) -> Result<(), BifrostError> {
+    apply_node(value, rules, "")
 }
 
 fn apply_node(value: &mut Value, node: &Trie<Rename>, path: &str) -> Result<(), BifrostError> {

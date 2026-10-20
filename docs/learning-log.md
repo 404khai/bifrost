@@ -100,3 +100,54 @@
   is explaining why `/session` may have no exact rule yet have a descendant rule,
   and why no trie branch means the engine can skip traversal of that subtree.
   Stop here before Stage 3.
+
+## 2026-10-21 — Stage 3 implementation
+
+- The developer explicitly authorized Stage 3 implementation, commit, and push.
+  Stage 2's technical checks were green; human learning checkpoints remain review
+  items, not something automated tests can certify. No Stage 4 work was added.
+- Expanded the fixed revision enum to v1–v4, using numeric ordering and fallible
+  `TryFrom<u32>` conversion. Built-in labels evolve name → title → label →
+  display_name. Every forward/reverse adjacent transition is explicit data.
+  This small enum avoids introducing arbitrary revision identifiers at this stage.
+- Added `Registry` for known revisions, directional adjacent transitions, and a
+  private per-registry source/target cache. Unknown endpoints/intermediates and
+  missing transitions error. Registration order cannot change revision order;
+  missing intermediate versions cannot be skipped. An empty step vector denotes
+  an explicit unchanged transition, unlike an unsupported direction.
+- A transition owns ordered trie steps. Compiling on demand resolves consecutive
+  hops and flattens their steps into a reusable `CompiledChain` of shared `Arc`
+  tries. No all-pairs precomputation occurs. Existing tokenization/trie indexing
+  is reused; lazy compilation assembles the requested ordered execution plan.
+- Rejected merging hops into one trie: repeated edits at the same path would
+  replace each other, and path-renaming interactions could change semantics.
+  Tests cover consecutive field renames and moving a parent before later edits
+  inside its new location. Within a step, Stage 2's tree order remains unchanged.
+- Plans clone the input once and use the internal in-place engine on that owned
+  working copy for each step. Public `apply_rules` still clones its borrowed
+  input. Errors on later passes discard only the working copy.
+- Chose whole-cache invalidation on every successful transition update rather
+  than registry generation counters. Configuration is owned/private and all
+  writes require `&mut self`, so no cache entry can survive a rule change.
+  Failed updates preserve both configuration and cache. Counters and shared
+  pointer identity provide evidence for laziness, reuse, and invalidation.
+- `Arc` provides shared ownership of immutable plans and tries without cloning
+  their contents on cache hits. Explicitly held plans remain immutable snapshots
+  after updates; new registry lookups compile against current rules. Registries
+  have separate caches, preventing accidental cross-registry plan reuse.
+- `translate` remains a convenience wrapper creating a fresh built-in registry.
+  Callers wanting reuse keep a `Registry` or compiled plan. No global mutable
+  state, locks, extra dependency, streaming, or benchmark claims were introduced.
+- Initial tests passed: 2 unit tests, 32 integration tests, and 1 doctest. The
+  12 new integration tests include all built-in pairs against sequential reference
+  application, round trips, unknown/missing revisions, absent downgrade support,
+  identity, ordering, intermediate conflicts/schema errors, snapshots, cache
+  isolation, lazy reuse, failed compilation recovery, and cache invalidation.
+- Final checks passed: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (2 unit tests,
+  32 integration tests, 2 doctests), `cargo doc --no-deps`, and
+  `git diff --check`. No benchmarks were run.
+- Stage 3 implementation is verified and ready for review. Review checkpoint:
+  explain why merging revision steps can change behavior and why clearing all
+  cached pairs after a mutation
+  prevents stale plans. Stop here before Stage 4.

@@ -1,7 +1,7 @@
 //! Bifrost translates JSON messages between explicitly supplied API revisions.
 //!
-//! Stage 2 indexes object rename rules by JSON Pointer tokens in a prefix trie.
-//! The built-in migration supports the reversible `session.terminal.name` ↔ `title` rename.
+//! Stage 3 lazily compiles ordered revision chains from JSON Pointer rule tries.
+//! Built-in terminal fields evolve through `name`, `title`, `label`, and `display_name`.
 //!
 //! ```
 //! use bifrost::{Revision, translate};
@@ -13,26 +13,23 @@
 //! # Ok::<(), bifrost::BifrostError>(())
 //! ```
 
+mod compiler;
 mod error;
 mod pointer;
+mod registry;
+mod revision;
 mod rules;
 mod translate;
 mod trie;
 
+pub use compiler::CompiledChain;
 pub use error::BifrostError;
 pub use pointer::{Pointer, PointerError};
+pub use registry::{CacheStats, Registry};
+pub use revision::Revision;
 pub use rules::{Rename, apply_rules};
 pub use translate::translate;
 pub use trie::Trie;
-
-/// A supported API revision, supplied by the caller rather than read from JSON.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Revision {
-    /// Terminal labels use `name`.
-    V1,
-    /// Terminal labels use `title`.
-    V2,
-}
 
 #[cfg(test)]
 mod tests {
