@@ -107,9 +107,9 @@ fn collisions_error_without_mutating_input_even_for_equal_or_null_values() {
             assert_eq!(
                 translate(&input, from, to),
                 Err(BifrostError::Conflict {
-                    path: "/session/terminal",
-                    source,
-                    destination,
+                    path: "/session/terminal".into(),
+                    source: source.into(),
+                    destination: destination.into(),
                 })
             );
             assert_eq!(input, original);
@@ -138,7 +138,7 @@ fn incompatible_types_error_at_each_path_without_mutating_input() {
             for (from, to, _, _) in directions() {
                 assert_eq!(
                     translate(&input, from, to),
-                    Err(BifrostError::ExpectedObject { path })
+                    Err(BifrostError::ExpectedObject { path: path.into() })
                 );
                 assert_eq!(input, original);
             }

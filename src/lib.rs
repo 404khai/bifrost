@@ -1,6 +1,7 @@
 //! Bifrost translates JSON messages between explicitly supplied API revisions.
 //!
-//! Stage 1 supports the reversible `session.terminal.name` ↔ `title` rename.
+//! Stage 2 indexes object rename rules by JSON Pointer tokens in a prefix trie.
+//! The built-in migration supports the reversible `session.terminal.name` ↔ `title` rename.
 //!
 //! ```
 //! use bifrost::{Revision, translate};
@@ -13,10 +14,16 @@
 //! ```
 
 mod error;
+mod pointer;
+mod rules;
 mod translate;
+mod trie;
 
 pub use error::BifrostError;
+pub use pointer::{Pointer, PointerError};
+pub use rules::{Rename, apply_rules};
 pub use translate::translate;
+pub use trie::Trie;
 
 /// A supported API revision, supplied by the caller rather than read from JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

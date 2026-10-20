@@ -2,7 +2,7 @@
 
 > Bifrost is a learning-first Rust library for transforming JSON messages between API revisions.
 >
-> **Current milestone: Stage 1 — Basic Translator.** Stages 2–5 are planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
+> **Current milestone: Stage 2 — JSON Pointer and trie.** Stage 1 is implemented; Stage 2 was authorized on 2026-10-21. Stages 3–5 are planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
 
 ## 1. Mission
 
@@ -67,7 +67,7 @@ When performing work, report:
 
 Each stage has a goal, required work, tests, and an exit gate. Mark it complete only after all requirements for that stage pass. Record completion in `docs/learning-log.md` with the date, relevant commands, and findings.
 
-### Stage 1 — Basic translator [ACTIVE]
+### Stage 1 — Basic translator [IMPLEMENTED]
 
 **Goal:** Parse a JSON value, rename a nested field for v1 → v2, implement the reverse v2 → v1 mapping, and serialize the result.
 
@@ -131,12 +131,12 @@ pub fn translate(
 
 **Implementation tasks:**
 
-- [ ] Initialize a small library crate with `serde_json` and a README.
-- [ ] Define revisions and a minimal error type.
-- [ ] Implement v1 → v2 translation.
-- [ ] Implement v2 → v1 translation.
-- [ ] Add unit and integration tests for nested JSON objects.
-- [ ] Add documentation showing both versions and the behavior contract.
+- [x] Initialize a small library crate with `serde_json` and a README.
+- [x] Define revisions and a minimal error type.
+- [x] Implement v1 → v2 translation.
+- [x] Implement v2 → v1 translation.
+- [x] Add unit and integration tests for nested JSON objects.
+- [x] Add documentation showing both versions and the behavior contract.
 
 **Required tests:**
 
@@ -151,19 +151,19 @@ pub fn translate(
 
 **Exit gate:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` pass; the developer can explain borrowing a `Value`, cloning versus moving it, object mutation, and error propagation. Stop here for review before Stage 2.
 
-### Stage 2 — JSON Pointer and trie
+### Stage 2 — JSON Pointer and trie [ACTIVE]
 
 **Goal:** Replace hardcoded paths with structured rules indexed by JSON Pointer path tokens.
 
 **Tasks:**
 
-- [ ] Read RFC 6901 and implement a focused JSON Pointer tokenizer.
-- [ ] Handle the empty pointer (document root), empty path tokens, `/` separators, `~0` for `~`, and `~1` for `/`.
-- [ ] Reject invalid escape sequences such as `~2` and dangling `~`.
-- [ ] Implement a trie with Rust structs/enums and `HashMap<String, Node>` or an equivalent representation.
-- [ ] Insert rules and look up applicable paths.
-- [ ] Support checking whether **any descendant** rule exists, not merely exact matches.
-- [ ] Refactor Stage 1 to express its rename through the rule/trie API while retaining existing behavior.
+- [x] Read RFC 6901 and implement a focused JSON Pointer tokenizer.
+- [x] Handle the empty pointer (document root), empty path tokens, `/` separators, `~0` for `~`, and `~1` for `/`.
+- [x] Reject invalid escape sequences such as `~2` and dangling `~`.
+- [x] Implement a trie with Rust structs/enums and `HashMap<String, Node>` or an equivalent representation.
+- [x] Insert rules and look up applicable paths.
+- [x] Support checking whether **any descendant** rule exists, not merely exact matches.
+- [x] Refactor Stage 1 to express its rename through the rule/trie API while retaining existing behavior.
 
 **Required tests:** nested paths, common prefixes, escaping, root/empty tokens, nonexistent paths, and array-index tokens as path components. If array transformations are not yet supported, explicitly distinguish *tokenizing* an array path from *applying* it.
 

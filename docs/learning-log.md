@@ -51,3 +51,52 @@
   `cargo clippy --all-targets -- -D warnings`, `cargo test` (2 unit tests,
   7 integration tests, 1 doctest), and `cargo doc --no-deps`.
   No benchmarks were run; these belong to Stage 5.
+
+## 2026-10-21 — Stage 2 implementation
+
+- The developer authorized Stage 2. Stage 1's implementation/tests remain in
+  place; advancing does not independently verify the human learning checkpoint.
+- Read RFC 6901: https://www.rfc-editor.org/rfc/rfc6901 (syntax and evaluation).
+  Implemented the plain string representation, not URI fragments or a general
+  document evaluator. Root has zero tokens; `/` has one empty token. Split first,
+  then decode escapes once to preserve `~01` as `~1`. Unicode is not normalized.
+- Added `Pointer`, `PointerError`, generic `Trie<T>`, `Rename`, and `apply_rules`.
+  The built-in translator now expresses the containing-object pointer and the
+  explicit directional rename as data. No schema-specific navigation remains in
+  the editing engine. No dependencies were added.
+- Chose `BTreeMap` instead of `HashMap` for predictable branch/error ordering.
+  This is a simplicity/determinism choice, not a benchmarked optimization.
+  Children share full decoded tokens, not character prefixes.
+- Trie insertion is the only way to create branches: every child reaches a
+  value. With no deletion API, a nonempty child map proves a strict descendant
+  value exists. Exact lookup and inclusive/strict prefix checks are distinct.
+- One edit per path; insertion returns a replaced edit explicitly. Descendants
+  run before parents; siblings run in sorted decoded-token order. This policy
+  is documented/tested and must not be confused with Stage 3's future ordered
+  revision-chain semantics. Equal-name renames are no-ops.
+- Generic Rust learning: `Trie<T>` shares one implementation across value types;
+  `Option<T>` distinguishes a node's stored value from prefix-only nodes.
+  `entry(...).or_default()` creates missing nodes while borrowing the map mutably.
+  Manual `Default` avoids an unnecessary `T: Default` constraint.
+- Changed translation error path/key fields from static references to owned
+  strings, enabling arbitrary escaped paths without lifetimes tied to the trie.
+  Stage 1 test assertions only changed error field construction to `.into()`;
+  their behavioral expectations are preserved. `From<PointerError>` enables `?`.
+- Missing paths are unchanged, but present non-object values on rule paths error.
+  Array-like tokens are accepted and indexed as strings; applying through arrays
+  is explicitly unsupported and errors. Numeric object keys remain supported.
+- Only trie-bearing branches are visited/validated by the engine; unrelated
+  subtrees remain in the cloned output. Full-tree cloning is still required.
+  No streaming, caching, revision chains, or performance claims were added.
+- Initial tests passed: 2 unit tests, 20 integration tests, 1 doctest. New tests
+  cover malformed escapes, root/empty tokens, Unicode/NUL, common prefixes,
+  replacement, numeric tokens, custom paths, collision/schema errors, input
+  preservation after partial clone edits, and deterministic application order.
+- Final checks passed: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (2 unit tests,
+  20 integration tests, 1 doctest), `cargo doc --no-deps`, and
+  `git diff --check`. No benchmarks were run.
+- Stage 2 implementation is verified and ready for learning review. The checkpoint
+  is explaining why `/session` may have no exact rule yet have a descendant rule,
+  and why no trie branch means the engine can skip traversal of that subtree.
+  Stop here before Stage 3.

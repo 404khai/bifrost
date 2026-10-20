@@ -1,57 +1,22 @@
 use serde_json::Value;
 
-use crate::{BifrostError, Revision};
+use crate::{BifrostError, Pointer, Rename, Revision, Trie, apply_rules};
 
-/// Translate a JSON value without changing the caller's input.
-///
-/// V1 → V2 renames `session.terminal.name` to `title`; V2 → V1 reverses it.
-/// Missing paths or source keys are unchanged. Field values may have any JSON
-/// type. All unrelated data is preserved. Identity translations clone any value
-/// without schema validation.
+/// Translate without mutating the input, using explicit forward/reverse rules.
+/// Missing paths and source fields are unchanged; identity calls clone any value.
 ///
 /// # Errors
-///
-/// Returns [`BifrostError::ExpectedObject`] if the root, `session`, or
-/// `session.terminal` exists with a non-object type during a revision change.
-/// Returns [`BifrostError::Conflict`] if both field names exist, even when their
-/// values are equal or null.
+/// Returns a schema error if the root, `session`, or `session.terminal` is not an
+/// object during a revision change, or a conflict if both field names exist.
 pub fn translate(input: &Value, from: Revision, to: Revision) -> Result<Value, BifrostError> {
-    let mut output = input.clone();
-    let (source, destination) = match (from, to) {
-        (Revision::V1, Revision::V2) => ("name", "title"),
-        (Revision::V2, Revision::V1) => ("title", "name"),
-        (Revision::V1, Revision::V1) | (Revision::V2, Revision::V2) => return Ok(output),
+    let rule = match (from, to) {
+        (Revision::V1, Revision::V2) => Rename::new("name", "title"),
+        (Revision::V2, Revision::V1) => Rename::new("title", "name"),
+        (Revision::V1, Revision::V1) | (Revision::V2, Revision::V2) => return Ok(input.clone()),
     };
-
-    let root = output
-        .as_object_mut()
-        .ok_or(BifrostError::ExpectedObject { path: "" })?;
-    let Some(session) = root.get_mut("session") else {
-        return Ok(output);
-    };
-    let session = session
-        .as_object_mut()
-        .ok_or(BifrostError::ExpectedObject { path: "/session" })?;
-    let Some(terminal) = session.get_mut("terminal") else {
-        return Ok(output);
-    };
-    let terminal = terminal
-        .as_object_mut()
-        .ok_or(BifrostError::ExpectedObject {
-            path: "/session/terminal",
-        })?;
-
-    // Check before removing anything: an existing destination must never be lost.
-    if terminal.contains_key(source) && terminal.contains_key(destination) {
-        return Err(BifrostError::Conflict {
-            path: "/session/terminal",
-            source,
-            destination,
-        });
-    }
-    if let Some(value) = terminal.remove(source) {
-        terminal.insert(destination.to_owned(), value);
-    }
-
-    Ok(output)
+    // Schema knowledge belongs in rule configuration, not engine navigation.
+    let path = Pointer::parse("/session/terminal")?;
+    let mut rules = Trie::new();
+    rules.insert(&path, rule);
+    apply_rules(input, &rules)
 }
