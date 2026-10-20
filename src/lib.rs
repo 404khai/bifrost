@@ -1,6 +1,7 @@
 //! Bifrost translates JSON messages between explicitly supplied API revisions.
 //!
-//! Stage 3 lazily compiles ordered revision chains from JSON Pointer rule tries.
+//! Stage 4 edits validated JSON bytes using ordered, lazily compiled rule tries.
+//! The `Value` translator remains available as a reference implementation.
 //! Built-in terminal fields evolve through `name`, `title`, `label`, and `display_name`.
 //!
 //! ```
@@ -19,6 +20,7 @@ mod pointer;
 mod registry;
 mod revision;
 mod rules;
+mod streaming;
 mod translate;
 mod trie;
 
@@ -28,6 +30,9 @@ pub use pointer::{Pointer, PointerError};
 pub use registry::{CacheStats, Registry};
 pub use revision::Revision;
 pub use rules::{Rename, apply_rules};
+pub use streaming::{
+    StreamingError, StreamingLimits, StreamingOutput, StreamingStats, apply_rules_bytes,
+};
 pub use translate::translate;
 pub use trie::Trie;
 

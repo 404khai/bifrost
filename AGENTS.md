@@ -2,7 +2,7 @@
 
 > Bifrost is a learning-first Rust library for transforming JSON messages between API revisions.
 >
-> **Current milestone: Stage 3 — Lazy compilation of revision chains.** Stages 1–2 are implemented; Stage 3 was authorized on 2026-10-21. Stages 4–5 are planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
+> **Current milestone: Stage 4 — Forward-only streaming JSON editor.** Stages 1–3 are implemented; Stage 4 was authorized on 2026-10-21. Stage 5 is planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
 
 ## 1. Mission
 
@@ -169,7 +169,7 @@ pub fn translate(
 
 **Exit gate:** no hardcoded path navigation remains in the transformation engine; all Stage 1 tests and new trie tests pass; the developer can explain why a prefix trie helps skip unrelated subtrees. Stop for review.
 
-### Stage 3 — Lazy compilation of revision chains [ACTIVE]
+### Stage 3 — Lazy compilation of revision chains [IMPLEMENTED]
 
 **Goal:** Support a sequence of API revisions without eagerly compiling every possible source-target pair.
 
@@ -187,21 +187,21 @@ pub fn translate(
 
 **Exit gate:** requested chains compile on demand; supported transformations behave identically to sequential application; there is no eager all-pairs precomputation. Demonstrate with instrumentation or tests, not assumptions. Stop for review.
 
-### Stage 4 — Forward-only streaming JSON editor
+### Stage 4 — Forward-only streaming JSON editor [ACTIVE]
 
 **Goal:** Transform only affected JSON paths while copying unaffected values directly into output, without materializing the entire input as `serde_json::Value`.
 
 **Tasks:**
 
-- [ ] Understand lexical JSON tokens, string escaping, nested arrays/objects, and parser state.
-- [ ] Establish a clearly defined interface taking JSON bytes/readers and an output writer/buffer.
-- [ ] Implement a forward-only parser/editor with recursive descent or an equivalent stack-based design.
-- [ ] Consult the compiled trie when entering object keys or array elements.
-- [ ] When no rule exists in a subtree, identify its exact byte range and copy it unchanged, avoiding full deserialization.
-- [ ] Apply rename/edit operations while maintaining valid JSON syntax, separators, and key ordering policies.
-- [ ] Preserve rule ordering and collision/error semantics from earlier stages.
-- [ ] Define safeguards for maximum nesting, input size, and allocation pressure.
-- [ ] Keep a `serde_json` reference implementation or test oracle for differential tests.
+- [x] Understand lexical JSON tokens, string escaping, nested arrays/objects, and parser state.
+- [x] Establish a clearly defined interface taking JSON bytes/readers and an output writer/buffer.
+- [x] Implement a forward-only parser/editor with recursive descent or an equivalent stack-based design.
+- [x] Consult the compiled trie when entering object keys or array elements.
+- [x] When no rule exists in a subtree, identify its exact byte range and copy it unchanged, avoiding full deserialization.
+- [x] Apply rename/edit operations while maintaining valid JSON syntax, separators, and key ordering policies.
+- [x] Preserve rule ordering and collision/error semantics from earlier stages.
+- [x] Define safeguards for maximum nesting, input size, and allocation pressure.
+- [x] Keep a `serde_json` reference implementation or test oracle for differential tests.
 
 **Required tests:** deeply nested objects/arrays, escaped quotes and backslashes, Unicode, empty collections, large unchanged subtrees, duplicate keys (explicitly documented policy), malformed JSON, limits, and differential equivalence against the reference translator. Unchanged bytes may be copied only after the editor has correctly established their structural boundaries and validated JSON syntax.
 

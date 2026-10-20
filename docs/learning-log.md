@@ -151,3 +151,62 @@
   explain why merging revision steps can change behavior and why clearing all
   cached pairs after a mutation
   prevents stale plans. Stop here before Stage 4.
+
+## 2026-10-21 — Stage 4 implementation
+
+- The developer authorized Stage 4 implementation, commit, and push. Stage 3's
+  verified implementation remains the revision-chain reference. No Stage 5
+  benchmark harness or optimization claims were introduced.
+- Read RFC 8259: https://www.rfc-editor.org/rfc/rfc8259, including grammar,
+  numbers, strings/Unicode, duplicate interoperability, and parser limits.
+- Added `apply_rules_bytes` and `CompiledChain::translate_bytes` with explicit
+  `StreamingLimits`, validated output, structural copy counters, and typed
+  `StreamingError`. The interface borrows bytes and returns a bounded buffer;
+  incremental reader/writer I/O is intentionally not part of this first editor.
+- Implemented forward-only recursive descent with a byte cursor. UTF-8 is
+  validated up front; strings validate controls, escapes, hex quads, and surrogate
+  pairs without allocating decoded value strings. Object keys decode for trie
+  matching and duplicate detection. Numeric leaves use `serde_json::Number` to
+  retain the reference implementation's range behavior. No full `Value` is built.
+- The scanner validates exact boundaries for unrelated subtrees instead of
+  searching for delimiters blindly. Only key spans become edits. After full
+  validation, copy original byte slices and escaped replacement keys in order.
+  This preserves whitespace, member order, literal/numeric spelling, and value
+  escape spelling. Structural counters establish the unchanged-subtree path.
+- Chose strict duplicate decoded-key rejection everywhere, including unchanged
+  subtrees and identities, instead of reproducing Value's already-collapsed
+  duplicates. This prevents ambiguous edits. Same key spellings in separate
+  objects are allowed. Unpaired surrogates and a leading BOM are rejected.
+- Existing object-only rule semantics remain intact. Numeric pointer tokens can
+  match object keys, but editing through arrays still errors. Unrelated arrays
+  are fully validated and copied. The Value oracle remains unchanged.
+- Retained ordered passes per compiled trie step. Combining all hops into one
+  scan could change rename/path semantics. Multiple buffers/passes are a clear
+  tradeoff until measured evidence justifies another design.
+- Deferred schema/collision errors until syntax validation completes; choose the
+  earliest error in trie postorder (sorted decoded-token siblings, descendants
+  before parents). This preserves reference error behavior despite arbitrary
+  input member order. Syntax, duplicate, and limit failures take precedence.
+- Defaults per pass: 16 MiB input/output, depth 64, one million value/key tokens,
+  8 MiB encoded string tokens. A hard depth ceiling of 128 prevents callers from
+  disabling recursion protection. Output size is checked before reserving its
+  buffer; accumulated replacement bytes are also bounded before allocation.
+  Input/token limits bound key sets and edit metadata, not a measured memory total.
+- Learning: `Scanner<'a>` holds borrowed slices and limits; recursion tracks
+  container state. Per-object decoded-key sets cost memory but make duplicate
+  semantics explicit. Recoverable output/edit reservation errors are surfaced;
+  limits reduce allocation pressure without promising an allocator/OOM guarantee.
+- Added deterministic differential tests for every revision pair, generated
+  nested documents (fixed LCG seed 0xB1F2057), syntax mutations/truncations,
+  malformed input, deep objects/arrays, empty values, Unicode/escaping, duplicate
+  keys, resource boundaries, copy counters, exact bytes, and ordered errors.
+- During development, parser tests passed; Clippy flagged two collapsible nested
+  conditions, which were corrected.
+- Final verification passed: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (2 unit tests,
+  49 integration tests, 3 doctests), `cargo doc --no-deps`, and
+  `git diff --check`. The 17 streaming tests include deterministic mutations and
+  truncations compared against `serde_json` acceptance. No benchmarks were run.
+- Stage 4 remains active for learning review: explain why unchanged bytes still
+  need syntax validation, and why copy counters are not performance evidence.
+  Stop before Stage 5.

@@ -2,9 +2,9 @@
 
 A learning-first Rust library for translating JSON messages between API revisions.
 
-Stage 3's lazy revision-chain compiler and cache are implemented on top of the
-JSON Pointer rule trie. Stage 3 is active pending learning review; stages 4–5
-(streaming and benchmarks) are not implemented.
+Stage 4's forward-only JSON byte editor is implemented alongside the `Value`
+reference translator and lazy revision-chain cache. Stage 4 is active pending
+learning review. Stage 5 (benchmarks and measured optimization) is not implemented.
 
 The built-in revisions rename the field inside `/session/terminal`:
 
@@ -20,7 +20,7 @@ apply those transitions in order, preserving unknown fields and the caller's inp
 
 ## Usage
 
-This library uses Rust edition 2024. From this checkout, run `cargo test` to try
+This library uses stable Rust and edition 2024 (verified with Rust 1.96.0). From this checkout, run `cargo test` to try
 the tests and executable documentation example.
 
 ```rust
@@ -89,7 +89,8 @@ containing object and both key names.
 Parsing and serialization belong to `serde_json`: malformed JSON fails before
 translation. Structural values are preserved, rather than original whitespace or
 object key order. The translator accepts an already parsed `Value`, so duplicate
-keys have already been resolved by parsing and cannot be detected here.
+keys have already been resolved by parsing and cannot be detected by the `Value`
+API. The byte API below rejects duplicate decoded keys before returning output.
 
 ## Design and Rust learning notes
 
@@ -115,7 +116,7 @@ Implementation: `src/lib.rs` exposes the API; `src/revision.rs` defines revision
 `src/trie.rs` indexes values by token prefix, `src/rules.rs` applies edits without
 schema-specific navigation, and `src/error.rs` defines translation errors.
 `src/registry.rs` owns transitions and the cache; `src/compiler.rs` executes
-immutable compiled plans.
+immutable compiled plans. `src/streaming.rs` validates and edits JSON bytes.
 See [the learning log](docs/learning-log.md) for decisions and verification.
 
 ## JSON Pointers and rule tries
@@ -244,9 +245,112 @@ cached. Payload collisions or schema errors can occur during execution even when
 a chain compiles; intermediate failures are preserved, rather than bypassed by
 a direct first-to-last rename. A later failure never mutates the borrowed input.
 
-There are no streaming, timing, throughput, or allocation benchmark results yet.
+There are no timing, throughput, or allocation benchmark results yet.
 The plan representation favors explicit ordering over fusing passes; cache
 invalidation favors a simple invariant over retaining unaffected entries.
+
+## Forward-only JSON byte editing
+
+Use a compiled plan to translate UTF-8 JSON bytes without building a full
+`serde_json::Value` tree:
+
+```rust
+use bifrost::{Registry, Revision, StreamingLimits};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let plan = Registry::builtin()?.compile(Revision::V1, Revision::V4)?;
+    let input = br#"{ "session": {"terminal": {"name": "astrid"}}, "keep": [1e+02] }"#;
+    let output = plan.translate_bytes(input, &StreamingLimits::default())?;
+    assert_eq!(output.bytes,
+        br#"{ "session": {"terminal": {"display_name": "astrid"}}, "keep": [1e+02] }"#);
+    assert_eq!(output.stats.renamed_keys, 3);
+    Ok(())
+}
+```
+
+For a custom trie, use `apply_rules_bytes(input, &rules, &limits)`. Both functions
+return `StreamingOutput { bytes, stats }` or a `StreamingError`.
+
+The recursive-descent scanner advances a byte cursor through objects, arrays,
+strings, numbers, literals, and separators. It checks UTF-8 up front and validates
+every subtree, including those with no rules. Only object keys and individual
+numeric leaves are decoded with `serde_json`; string values and collection values
+are not deserialized. The original `Value` engine remains available as a
+reference implementation.
+
+At each relevant object, the scanner consults decoded trie tokens and records
+key replacement spans. Unrelated values take the validated-copy path: the scanner
+establishes their exact boundaries and records copy counters, without constructing
+their value trees. After the complete document passes validation, output assembly
+copies slices in order and substitutes only renamed keys. Whitespace, member
+order, numeric spellings, escaped strings, and all other unchanged bytes survive
+exactly. New key names are escaped by `serde_json`.
+
+This is a **buffered slice-to-buffer editor**, not incremental reader/writer I/O.
+It holds the borrowed input, key sets for open objects, edit metadata, and the
+output buffer. Multiple trie steps run as separate forward passes over byte
+buffers, preserving Stage 3's exact composition order. Each step's output is the
+next step's input; it does not build a full value tree. There are no partial
+output writes exposed to the caller on errors.
+
+### Byte API validation and error policy
+
+The syntax follows [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259), with an
+explicit interoperability policy:
+
+- Duplicate **decoded** keys are rejected in every object, including unchanged
+  subtrees and identity translations. For example, `"a"` and `"\u0061"` collide.
+  This intentionally differs from parsing into a `Value`, which has already
+  collapsed duplicate keys.
+- UTF-8, string escapes, Unicode surrogate pairs, separators, literals, and the
+  end of the document are validated. Unpaired surrogates, a leading UTF-8 BOM,
+  trailing data, and malformed content on unchanged paths are rejected.
+- Numbers use `serde_json::Number` validation to match the reference engine's
+  default range behavior, while preserving the original encoded bytes.
+- Same-revision and explicitly empty plans still validate syntax and limits;
+  they do not validate the migration schema and return an exact independent copy.
+- Schema, missing-path, collision, and equal-name behavior matches the `Value`
+  engine for valid unique-key JSON. Array values are validated and preserved;
+  applying rules through arrays remains unsupported and returns `ExpectedObject`.
+- Syntax, duplicate-key, and resource errors are reported when encountered,
+  before a pending translation error. After successful syntax validation,
+  translation errors retain the reference engine's sorted-child, descendant-first
+  order, even if document members appear in another order.
+
+`StreamingError` includes syntax offsets, duplicate-key information, named limit
+failures, invalid limit configuration, recoverable buffer reservation failures,
+and wrapped `BifrostError` values. Byte offsets refer to the pass that failed.
+
+### Resource limits and copy evidence
+
+`StreamingLimits::default()` applies these bounds independently to every pass:
+
+| Limit | Default |
+| --- | --- |
+| Input bytes | 16 MiB |
+| Output bytes | 16 MiB |
+| Nested containers | 64 |
+| Tokens (values plus object keys) | 1,000,000 |
+| Encoded string token bytes, including quotes | 8 MiB |
+
+Limits are configurable, except for a hard depth ceiling of 128 to protect the
+recursive parser's stack. A scalar has depth zero. Limits also cover unchanged
+subtrees and newly encoded keys. Total replacement-key bytes are bounded by the
+output limit before accumulating edits; the final output size is checked before
+reserving its buffer. Tokens and input size bound key-set and edit growth.
+These are resource bounds, not a measured peak-memory or allocation guarantee.
+
+`StreamingStats` counts passes, maximal copied value subtrees, their encoded
+bytes (excluding surrounding whitespace), and renamed keys. Counts sum across
+passes. A chain with zero trie steps performs one validation/copy pass. Tests
+assert exact bytes and copy counters for large unchanged subtrees; these counters
+demonstrate path selection, not speed or allocation measurements.
+
+Learning checkpoint: `Scanner<'a>` borrows both input and limits rather than
+owning or cloning them. Each recursive call holds parser state for one container.
+The depth bound limits that stack; key sets enforce duplicate policy. Keeping a
+pending semantic error lets the scan validate all syntax and then reproduce the
+reference engine's order without rewinding input or materializing its tree.
 
 ## Verification
 
@@ -271,5 +375,10 @@ trie application, and cover identity plans, missing/unknown revisions, absent
 reverse transitions, ordered edits, intermediate conflicts/errors, cache reuse,
 invalidation, and independent registry caches.
 
-No benchmarks or performance claims are included. Review Stage 3 before
-authorizing Stage 4.
+Streaming tests cover all revision pairs, deterministic generated documents,
+byte mutations and truncations against `serde_json`, exact copy spans, deep
+objects/arrays, escaped keys and values, Unicode, empty collections, duplicate
+keys, malformed syntax, limit boundaries, deterministic errors, and step order.
+
+No benchmarks or performance claims are included. Review Stage 4 before
+authorizing Stage 5.
