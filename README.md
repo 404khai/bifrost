@@ -2,9 +2,10 @@
 
 A learning-first Rust library for translating JSON messages between API revisions.
 
-Stage 4's forward-only JSON byte editor is implemented alongside the `Value`
-reference translator and lazy revision-chain cache. Stage 4 is active pending
-learning review. Stage 5 (benchmarks and measured optimization) is not implemented.
+Stages 1–4 are implemented. Stage 5 adds reproducible benchmarks, allocation
+profiles, and a measured optimization to object-key handling. Stage 5 is active
+pending review; see [the benchmark report](docs/benchmarks.md) for results and
+measurement limits.
 
 The built-in revisions rename the field inside `/session/terminal`:
 
@@ -108,7 +109,8 @@ API. The byte API below rejects duplicate decoded keys before returning output.
   field again. The destination key needs an owned `String`.
 - Revisions and errors are enums so callers can match explicit cases. `Copy`
   lets small revision values be passed by value without consuming the caller's
-  variable. No custom JSON parser or extra dependency is needed here.
+  variable. The Value API delegates parsing to `serde_json`; the byte API has
+  the explicit scanner described below. Benchmark dependencies are dev-only.
 
 Implementation: `src/lib.rs` exposes the API; `src/revision.rs` defines revisions;
 `src/translate.rs` provides a convenience wrapper over the built-in registry.
@@ -245,7 +247,8 @@ cached. Payload collisions or schema errors can occur during execution even when
 a chain compiles; intermediate failures are preserved, rather than bypassed by
 a direct first-to-last rename. A later failure never mutates the borrowed input.
 
-There are no timing, throughput, or allocation benchmark results yet.
+Timing, throughput, and allocation measurements are recorded in
+[the Stage 5 benchmark report](docs/benchmarks.md).
 The plan representation favors explicit ordering over fusing passes; cache
 invalidation favors a simple invariant over retaining unaffected entries.
 
@@ -273,8 +276,8 @@ return `StreamingOutput { bytes, stats }` or a `StreamingError`.
 
 The recursive-descent scanner advances a byte cursor through objects, arrays,
 strings, numbers, literals, and separators. It checks UTF-8 up front and validates
-every subtree, including those with no rules. Only object keys and individual
-numeric leaves are decoded with `serde_json`; string values and collection values
+every subtree, including those with no rules. Unescaped object keys borrow validated input slices; escaped keys and individual
+numeric leaves are decoded with `serde_json`. String values and collection values
 are not deserialized. The original `Value` engine remains available as a
 reference implementation.
 
@@ -352,6 +355,39 @@ The depth bound limits that stack; key sets enforce duplicate policy. Keeping a
 pending semantic error lets the scan validate all syntax and then reproduce the
 reference engine's order without rewinding input or materializing its tree.
 
+## Benchmarks and measured optimization
+
+```sh
+python3 scripts/bench.py --label local-1 --allocations --profile-case objects_20k
+python3 scripts/bench.py --label local-2
+python3 scripts/bench.py --label local-3
+```
+
+Use a new label for each run. Fixtures are generated in memory from a fixed seed;
+raw samples, environment/source hashes, and optional allocation profiles are
+recorded under `docs/benchmark-results`. The matrix covers sizes near 1 KiB,
+20 KiB, and 1 MiB, nesting, rule density, revision hops, changed/unchanged
+subtrees, and sequential clients sharing one plan. Compilation and cache lookup
+have separate measurements. DHAT's allocator runs in a separate executable from
+latency tests and is only a dev dependency.
+
+On the recorded Apple M3 workload, borrowing unescaped object keys reduced
+20 KiB object-fixture byte-editor latency from 87.35 to 51.36 µs across three runs
+per variant. Allocation blocks fell from 2,341 to 222; peak live heap stayed at
+20,769 bytes. This does not establish a general JSON speedup: plain-string and
+three-hop cases still favor the Value pipeline in these measurements.
+
+The optimization uses `Cow<'a, str>`: either a borrowed `&str` pointing into the
+input or an owned decoded `String` for escaped keys. Duplicate-key comparisons
+still use decoded names. Borrowed clones copy references; `into_owned()` allocates
+only where an owned key is needed. The existing differential and parser tests
+remain the correctness checks for both branches.
+
+See [docs/benchmarks.md](docs/benchmarks.md) for commands to reproduce the baseline
+in an isolated temporary build, medians, spread, throughput, live-heap results,
+profile evidence, raw data, and limitations. Batch percentiles are not individual
+request tail latencies, and allocation traffic is not peak live memory.
+
 ## Verification
 
 ```sh
@@ -380,5 +416,6 @@ byte mutations and truncations against `serde_json`, exact copy spans, deep
 objects/arrays, escaped keys and values, Unicode, empty collections, duplicate
 keys, malformed syntax, limit boundaries, deterministic errors, and step order.
 
-No benchmarks or performance claims are included. Review Stage 4 before
-authorizing Stage 5.
+Stage 5 results and tradeoffs are documented in [the benchmark report](docs/benchmarks.md).
+Review the measurement boundaries and sampling method before extending the
+benchmark matrix or attempting further optimizations.

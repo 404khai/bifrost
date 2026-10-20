@@ -2,7 +2,7 @@
 
 > Bifrost is a learning-first Rust library for transforming JSON messages between API revisions.
 >
-> **Current milestone: Stage 4 — Forward-only streaming JSON editor.** Stages 1–3 are implemented; Stage 4 was authorized on 2026-10-21. Stage 5 is planned, not implemented. Never claim a stage is complete unless its acceptance criteria have been met and verified.
+> **Current milestone: Stage 5 — Benchmark and optimize.** Stages 1–4 are implemented; Stage 5 was authorized on 2026-10-21. Never claim a stage is complete unless its acceptance criteria have been met and verified.
 
 ## 1. Mission
 
@@ -187,7 +187,7 @@ pub fn translate(
 
 **Exit gate:** requested chains compile on demand; supported transformations behave identically to sequential application; there is no eager all-pairs precomputation. Demonstrate with instrumentation or tests, not assumptions. Stop for review.
 
-### Stage 4 — Forward-only streaming JSON editor [ACTIVE]
+### Stage 4 — Forward-only streaming JSON editor [IMPLEMENTED]
 
 **Goal:** Transform only affected JSON paths while copying unaffected values directly into output, without materializing the entire input as `serde_json::Value`.
 
@@ -207,20 +207,20 @@ pub fn translate(
 
 **Exit gate:** new editor passes correctness tests, avoids building a full `Value` for routine translation, and demonstrates unchanged-subtree fast paths. No performance claims before benchmarks. Stop for review.
 
-### Stage 5 — Benchmark and optimize
+### Stage 5 — Benchmark and optimize [ACTIVE]
 
 **Goal:** Measure translation latency, throughput, memory usage, and allocation behavior with repeatable experiments.
 
 **Tasks:**
 
-- [ ] Add a reproducible benchmark harness (`criterion` is an acceptable choice).
-- [ ] Generate realistic, deterministic JSON fixtures near 1 KB, 20 KB, and 1 MB.
-- [ ] Compare full `serde_json` parse/edit/serialize against the streaming editor.
-- [ ] Vary nesting depth, rule density, number of revision hops, changed versus unchanged subtree sizes, and number of clients sharing a compiled transformation.
-- [ ] Separate cold compilation time, cache-hit translation time, and end-to-end latency.
-- [ ] Measure allocations using a well-defined tool or counting allocator; measure memory separately where possible.
-- [ ] Profile bottlenecks, make one change at a time, rerun benchmarks, and record results.
-- [ ] Report median, spread/percentiles where measurable, environment, sample counts, and limitations.
+- [x] Add a reproducible benchmark harness (`criterion` is an acceptable choice).
+- [x] Generate realistic, deterministic JSON fixtures near 1 KB, 20 KB, and 1 MB.
+- [x] Compare full `serde_json` parse/edit/serialize against the streaming editor.
+- [x] Vary nesting depth, rule density, number of revision hops, changed versus unchanged subtree sizes, and number of clients sharing a compiled transformation.
+- [x] Separate cold compilation time, cache-hit translation time, and end-to-end latency.
+- [x] Measure allocations using a well-defined tool or counting allocator; measure memory separately where possible.
+- [x] Profile bottlenecks, make one change at a time, rerun benchmarks, and record results.
+- [x] Report median, spread/percentiles where measurable, environment, sample counts, and limitations.
 
 **Required evidence:** bench scripts, fixture generator/seed, hardware/toolchain details, raw or summarized results, and a performance report in `docs/benchmarks.md`.
 

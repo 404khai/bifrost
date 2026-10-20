@@ -5,3 +5,17 @@ edition = "2024"
 
 [dependencies]
 serde_json = "1"
+
+[dev-dependencies]
+dhat = "0.3.3"
+
+[[bench]]
+name = "translator"
+harness = false
+
+[[bench]]
+name = "allocations"
+harness = false
+
+[profile.bench]
+debug = 1

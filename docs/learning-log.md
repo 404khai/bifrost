@@ -210,3 +210,63 @@
 - Stage 4 remains active for learning review: explain why unchanged bytes still
   need syntax validation, and why copy counters are not performance evidence.
   Stop before Stage 5.
+
+## 2026-10-21 — Stage 5 benchmarks and measured optimization
+
+- The developer authorized Stage 5 implementation, commit, and push. Started from
+  a clean Stage 4 commit, ead40e24c4a73f8deb0edf4197f7104bb8fbfd83.
+- Added a custom stable-Rust benchmark harness using Instant/black_box rather
+  than Criterion, preserving every raw batch-mean sample and environment/source
+  hashes. Fixture generator uses LCG seed 0xB1F2057 and sizes near 1 KiB, 20 KiB,
+  and 1 MiB. It checks structural equivalence against the Value translator before
+  measuring any case and verifies fixture size bounds and shared plan identity.
+- The 14-case matrix varies rule-path depth, rule count, 0/1/3 hops, sequential
+  shared clients (1/8/64), and object-heavy versus long-string subtrees attached
+  to changed and unchanged paths. Shared clients are not concurrent clients.
+- Measured cached-plan Value parse/clone/edit/serialize and byte-editor end-to-end
+  work. Separately timed cold plan compilation (32 independent prebuilt
+  registries per sample) and warm cache lookup. Rule setup is excluded from cold
+  compile; timer overhead is not subtracted. A pilot revealed that single cold
+  operations were too close to timer quantization, so final runs use batches.
+- Added dhat 0.3.3 as a dev-only dependency in a separate allocation executable.
+  This avoids adding an unsafe counting allocator ourselves and avoids
+  contaminating latency measurements with allocation tracing. Each allocation
+  case runs once in a new process, with fixture/plan setup outside profiling.
+  Collected cumulative blocks/bytes and peak simultaneous live heap separately;
+  these are not process RSS or allocator metadata measurements.
+- Collected three 31-sample baseline and three 31-sample optimized runs; each
+  sample is an adaptive batch mean, not an individual request observation.
+  Preserved JSON, heap-profile allocation-site summaries, hardware/toolchain
+  details, and a computed six-run summary in docs/benchmark-results.
+- Allocation profiling of the baseline 20 KiB object case attributed 2,090 of
+  2,341 blocks to String key decoding and key cloning. Made exactly one
+  production optimization: use Cow<'a, str> to borrow unescaped validated keys
+  while continuing to decode escaped keys into owned Strings. The duplicate-key
+  set and comparisons preserve decoded-key semantics; diagnostics own keys only
+  when necessary. No unsafe code, rule-order changes, or skipped validation.
+- Three-run median byte latency changed from 87.35 to 51.36 us (41.2% lower) on
+  the 20 KiB object fixture. Blocks fell from 2,341 to 222 (90.5%), cumulative
+  bytes from 90,429 to 81,077 (10.3%), peak live heap stayed 20,769 bytes.
+  Object-heavy cases improved about 36–43%; plain-string cases showed no measured
+  benefit. Three-hop and large-string cases still favored the Value pipeline.
+- Raw source hashes distinguish baseline/optimized code measured before this
+  commit. Added --source-ref to reproduce the old library with current harness
+  and Cargo.lock in an isolated temporary directory. A five-sample filtered
+  reproduction passed and matched the baseline streaming source hash.
+- docs/benchmarks.md documents methodology, all matrix medians, run spread,
+  p05/p95 of batch means, throughput, allocations/live heap, evidence, regression
+  caveats, and exclusions. Apple M3/16 GiB/macOS 27/Rust 1.96.0 is one local
+  environment; no claims about request p99, concurrency, escaped-key performance,
+  CPU profiles, or production-wide speed. Heap profiles identify allocation
+  bottlenecks. No additional optimization was attempted after the measured win.
+- Final verification passed: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (2 unit tests,
+  49 integration tests, 3 doctests), and `cargo doc --no-deps`.
+  Python syntax compilation, summary regeneration, raw-data shape checks,
+  source/harness/fixture hash checks, and `git diff --check` also passed.
+  Completed three full 31-sample runs per variant, 28 separately instrumented
+  case/method processes per variant, two heap profiles, and one isolated
+  five-sample baseline reproduction. Stage 5's technical exit evidence is
+  recorded in docs/benchmarks.md; the implementation is ready for review.
+- Learning review remains: explain Cow ownership,
+  latency batching versus request tails, and traffic versus peak live memory.

@@ -1,5 +1,6 @@
 //! Forward-only validation and object-key editing without a JSON value tree.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fmt;
@@ -247,7 +248,7 @@ fn check(actual: usize, maximum: usize, limit: &'static str) -> Result<(), Strea
     }
 }
 
-impl Scanner<'_> {
+impl<'a> Scanner<'a> {
     fn invalid(&self, message: &str) -> StreamingError {
         StreamingError::InvalidJson {
             offset: self.pos,
@@ -367,21 +368,36 @@ impl Scanner<'_> {
     ) -> Result<(), StreamingError> {
         self.pos += 1;
         self.whitespace();
-        let mut keys = BTreeSet::new();
+        let mut keys: BTreeSet<Cow<'a, str>> = BTreeSet::new();
         if !self.take(b'}') {
             loop {
                 self.token()?;
                 let start = self.pos;
                 self.string()?;
                 let end = self.pos;
-                // Only object keys are materialized; value strings stay byte slices.
-                let key: String = serde_json::from_slice(&self.input[start..end])
-                    .map_err(|error| self.invalid(&error.to_string()))?;
+                // Profiling showed key decoding and cloning dominated allocation
+                // counts. Validated keys without escapes can borrow input bytes;
+                // escaped keys still need an owned decoded spelling for equality.
+                let encoded: &'a [u8] = &self.input[start + 1..end - 1];
+                let key = if encoded.contains(&b'\\') {
+                    Cow::Owned(
+                        serde_json::from_slice::<String>(&self.input[start..end])
+                            .map_err(|error| self.invalid(&error.to_string()))?,
+                    )
+                } else {
+                    Cow::Borrowed(
+                        std::str::from_utf8(encoded)
+                            .map_err(|error| self.invalid(&error.to_string()))?,
+                    )
+                };
                 if !keys.insert(key.clone()) {
-                    return Err(StreamingError::DuplicateKey { offset: start, key });
+                    return Err(StreamingError::DuplicateKey {
+                        offset: start,
+                        key: key.into_owned(),
+                    });
                 }
                 if let Some(rule) = node.and_then(|node| node.value.as_ref())
-                    && key == rule.source
+                    && key.as_ref() == rule.source.as_str()
                     && rule.source != rule.destination
                 {
                     self.edit(start, end, &rule.destination)?;
@@ -391,10 +407,10 @@ impl Scanner<'_> {
                     return Err(self.invalid("expected :"));
                 }
                 self.whitespace();
-                let child = node.and_then(|node| node.children.get(&key));
+                let child = node.and_then(|node| node.children.get(key.as_ref()));
                 // Unrelated keys need no path allocation for semantic diagnostics.
                 if child.is_some() {
-                    path.push(key);
+                    path.push(key.into_owned());
                 }
                 self.value(child, depth, path, node.is_some())?;
                 if child.is_some() {
@@ -412,8 +428,8 @@ impl Scanner<'_> {
         }
         if let Some(rule) = node.and_then(|node| node.value.as_ref())
             && rule.source != rule.destination
-            && keys.contains(&rule.source)
-            && keys.contains(&rule.destination)
+            && keys.contains(rule.source.as_str())
+            && keys.contains(rule.destination.as_str())
         {
             self.record_error(
                 path,
